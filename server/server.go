@@ -2,8 +2,6 @@ package server
 
 import (
 	"bufio"
-	"gorm.io/driver/mysql"
-	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 	"log"
 	"math/rand"
@@ -22,7 +20,6 @@ type dsnAndName struct {
 type servers struct{
 	dsn  string
 	dsnFileName  string
-	dsnDB   *gorm.DB
 }
 func New(threads int, logLevel string, sqlFile string) *dsnAndName {
 	rand.Seed(time.Now().UnixNano())
@@ -61,18 +58,6 @@ func (s *dsnAndName) SetDsnAndFileNames(dsns []string, fileNames []string) {
 		var dsnAndName servers
 
 		dsnAndName.dsn = dsns[i]
-		dsnDB, err := gorm.Open(mysql.Open(dsnAndName.dsn), &gorm.Config{Logger: logger.Default.LogMode(s.logLevel)})
-		if err != nil {
-			panic(err)
-		}
-		d, err := dsnDB.DB()
-		if err != nil {
-			panic(err)
-		}
-		d.SetMaxIdleConns(10)
-		d.SetMaxOpenConns(s.threads + 3)
-		d.SetConnMaxIdleTime(time.Minute)
-		dsnAndName.dsnDB = dsnDB
 		dsnAndName.dsnFileName = fileNames[i]
 		s.servers = append(s.servers, &dsnAndName)
 	}
@@ -114,21 +99,25 @@ func (s *dsnAndName) CompareTime() {
 	}
 
 	var wg sync.WaitGroup
-	ch := make(chan []string, s.threads+1)
+	ch := make(chan string, s.threads+1)
 	for i := 0; i < s.threads; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if len(sqls) == 0 {
-				return
-			} else {
-				sql := sqls[len(sqls)-1]
-				sqls = sqls[:len(sqls)-1]
-				startCompareTime(s, sql)
-				ch <- sqls
+			for {
+				select {
+				case sql, ok := <-ch:
+					if !ok {
+						return
+					}
+					startCompareTime(s, sql)
+				}
 			}
 		}()
 	}
-	wg.Wait()
+	for i := 0; i < len(sqls); i++ {
+		ch <- sqls[i]
+	}
 	close(ch)
+	wg.Wait()
 }

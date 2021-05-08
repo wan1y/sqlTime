@@ -1,6 +1,6 @@
 select tidb_version();
 SHOW VARIABLES LIKE 'aurora\_version';
-show variables where variable_name=‘language’ or variable_name=‘net_write_timeout’;
+show variables where variable_name="language" or variable_name="net_write_timeout";
 SHOW DRAINER STATUS;
 SHOW PUMP STATUS;
 SHOW MASTER STATUS;
@@ -25,4 +25,8 @@ show stats_meta;
 show status;
 SHOW GLOBAL VARIABLES;
 SELECT @@sql_mode;
-SHOW GLOBAL VARIABLES like '%tidb%'
+SHOW GLOBAL VARIABLES like 'tidb';
+select @allow_auto_random_explicit_inser;
+SHOW VARIABLES;
+SHOW CONFIG where type like "tidb";
+show VARIABLES like "sql_mode"

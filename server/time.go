@@ -1,8 +1,11 @@
 package server
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
 	_ "gorm.io/driver/mysql"
+	"gorm.io/gorm/logger"
 	"io"
 	"math"
 	"os"
@@ -17,18 +20,24 @@ type sqlTimes struct {
 
 func startCompareTime(s *dsnAndName, sqls string) {
 
+
 	var sqlTimes map[string]sqlTimes
 	for i := range s.servers {
-		if i == 0 {
-			sqlTimes = getStandardTime(s.getServers(i), sqls)
-		} else {
-			getTime(s.getServers(i), sqlTimes, sqls)
+		db, err := sql.Open("mysql", s.servers[i].dsn)
+		if err != nil {
+			panic(err)
 		}
+		logger.Default.Info(context.Background(), "%s exec: %s", s.getServers(i).dsn, sqls)
+		if i == 0 {
+			sqlTimes = getStandardTime(s.getServers(i), sqls, db)
+		} else {
+			getTime(s.getServers(i), sqlTimes, sqls, db)
+		}
+		db.Close()
 	}
 }
 
-func getStandardTime(servers *servers, sqls string) map[string]sqlTimes{
-	//db, err := sql.Open("mysql", servers.dsn)
+func getStandardTime(servers *servers, sqls string, db *sql.DB) map[string]sqlTimes {
 
 	var allTime string
 	var errorTime string
@@ -36,8 +45,8 @@ func getStandardTime(servers *servers, sqls string) map[string]sqlTimes{
 	times := sqlTimes{}
 	for j := 0; j < 3; j++ {
 		t1 := time.Now()
-		if err := servers.dsnDB.Exec(sqls); err != nil {
-			fmt.Println(err)
+		if _, err := db.Exec(sqls); err != nil {
+			logger.Default.Error(context.Background(), err.Error())
 		}
 		elapsed := time.Since(t1)
 		if j == 0 {
@@ -66,14 +75,13 @@ func getStandardTime(servers *servers, sqls string) map[string]sqlTimes{
 				fmt.Sprintf("%.3f", v.thirdTime)+ "s\n\n"
 		}
 	}
+
 	var err error
 	var f *os.File
 	if checkFileIsExist("StandardTime.txt") {
 		f, err = os.OpenFile("StandardTime.txt", os.O_APPEND|os.O_WRONLY, 0666)
-		fmt.Println("StandardTime.txt exists")
 	} else {
 		f, err = os.Create("StandardTime.txt")
-		fmt.Println("StandardTime.txt don't exists")
 	}
 	defer f.Close()
 	 _, err = io.WriteString(f, allTime)
@@ -82,10 +90,8 @@ func getStandardTime(servers *servers, sqls string) map[string]sqlTimes{
 	 }
 	if checkFileIsExist(servers.dsnFileName) {
 		f, err = os.OpenFile(servers.dsnFileName, os.O_APPEND|os.O_WRONLY, 0666)
-		fmt.Println(servers.dsnFileName + " exists")
 	} else {
 		f, err = os.Create(servers.dsnFileName)
-		fmt.Println(servers.dsnFileName + " don't exists")
 	}
 	defer f.Close()
 	_, err = io.WriteString(f, errorTime);
@@ -96,15 +102,15 @@ func getStandardTime(servers *servers, sqls string) map[string]sqlTimes{
 }
 
 
-func getTime(servers *servers, standardTime map[string]sqlTimes, sqls string){
+func getTime(servers *servers, standardTime map[string]sqlTimes, sqls string, db *sql.DB) {
 
 	var errorTime string
 	sqlAndTime := map[string]sqlTimes{}
 	times := sqlTimes{}
 	for j := 0; j < 3; j++ {
 		t1 := time.Now()
-		if err := servers.dsnDB.Exec(sqls); err != nil {
-			fmt.Println(err)
+		if _, err := db.Exec(sqls); err != nil {
+			logger.Default.Error(context.Background(), err.Error())
 		}
 		elapsed := time.Since(t1)
 		if j == 0 {
@@ -137,10 +143,8 @@ func getTime(servers *servers, standardTime map[string]sqlTimes, sqls string){
 	var f *os.File
 	if checkFileIsExist(servers.dsnFileName) {
 		f, err = os.OpenFile(servers.dsnFileName, os.O_APPEND|os.O_WRONLY, 0666)
-		fmt.Println(servers.dsnFileName + " exists")
 	} else {
 		f, err = os.Create(servers.dsnFileName)
-		fmt.Println(servers.dsnFileName + " don't exists")
 	}
 	defer f.Close()
 	_, err = io.WriteString(f, errorTime);
